@@ -35,6 +35,7 @@ jobs:
     
     - name: Package as DMG
       run: |
+        # 先尝试基本打包
         jpackage --input target \
                  --name "BatchRenameTool" \
                  --main-jar batchfile_app-0.0.1-SNAPSHOT.jar \
@@ -43,34 +44,52 @@ jobs:
                  --type dmg \
                  --app-version 1.0.0 \
                  --vendor RT \
-                 --java-options "--add-modules" \
-                 --java-options "javafx.controls,javafx.fxml"
+                 --add-modules javafx.controls,javafx.fxml \
+                 --java-options "-Dfile.encoding=UTF-8" || \
+        # 如果失败，尝试使用 module-path
+        jpackage --input target \
+                 --name "BatchRenameTool" \
+                 --main-jar batchfile_app-0.0.1-SNAPSHOT.jar \
+                 --main-class com.rt.batchfile_app.BatchfileAppApplication \
+                 --dest target/dist \
+                 --type dmg \
+                 --app-version 1.0.0 \
+                 --vendor RT \
+                 --module-path $(find ~/.m2 -name "javafx-controls*.jar" | head -1 | xargs dirname | sed 's|/[^/]*$||') \
+                 --add-modules javafx.controls,javafx.fxml
     
     - name: Upload DMG artifact
-      uses: actions/upload-artifact@v3
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
         name: BatchRenameTool-macOS
         path: target/dist/*.dmg
+        retention-days: 30
     
     - name: Create Release
-      if: github.event_name == 'push'
-      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'push' && success()
+      uses: softprops/action-gh-release@v2
       with:
         files: target/dist/*.dmg
         tag_name: v${{ github.run_number }}
-        name: Release ${{ github.run_number }}
+        name: Release v${{ github.run_number }}
         body: |
           ## 批量文件夹重命名工具 - macOS 版本
           
-          ### 新增功能
-          - 文件自动分类到对应文件夹
-          - 支持同时选中文件夹和文件，按名称匹配移动
+          ### 功能特性
+          - ✅ 批量重命名文件夹（支持 Excel 导入）
+          - ✅ 批量重命名文件夹内的文件
+          - ✅ 自动分类文件到对应文件夹（新功能）
           
           ### 安装说明
           1. 下载 DMG 文件
           2. 双击打开
           3. 将应用拖拽到 Applications 文件夹
-          4. 首次运行可能需要右键点击"打开"以允许运行
+          4. 首次运行：右键点击 → 选择"打开" → 再次点击"打开"
+          
+          ### 系统要求
+          - macOS 10.14 或更高版本
+          - 无需安装 Java 环境（已内置 JRE）
         draft: false
         prerelease: false
       env:
