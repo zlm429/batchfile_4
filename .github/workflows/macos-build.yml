@@ -51,7 +51,6 @@ jobs:
     
     - name: Package as DMG
       run: |
-        # 使用 Rosetta 2 兼容模式打包，支持 Intel 和 Apple Silicon
         jpackage --input target \
                  --name "BatchRenameTool" \
                  --main-jar batchfile_app-0.0.1-SNAPSHOT.jar \
@@ -62,9 +61,7 @@ jobs:
                  --vendor RT \
                  --module-path ${{ env.JAVAFX_PATH }} \
                  --add-modules javafx.controls,javafx.fxml \
-                 --java-options "-Dfile.encoding=UTF-8" \
-                 --mac-package-identifier com.rt.batchrename \
-                 --temp target/temp-build
+                 --java-options "-Dfile.encoding=UTF-8"
     
     - name: Upload DMG artifact
       if: always()
