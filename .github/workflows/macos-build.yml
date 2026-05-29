@@ -2,9 +2,9 @@ name: macOS Build and Package
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ main ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ main ]
 
 jobs:
   build-macos:
