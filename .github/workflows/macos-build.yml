@@ -1,4 +1,4 @@
-name: Build & Package (Windows + macOS)
+name: Build & Package (Windows EXE + macOS Intel DMG)
 
 on:
   push:
@@ -14,25 +14,23 @@ env:
   MAIN_JAR: "batchfile_app-0.0.1-SNAPSHOT.jar"
 
 jobs:
-  build-macos:
-    runs-on: macos-14
-    strategy:
-      matrix:
-        arch: [x64, arm64]
+  ##############################################################################
+  # macOS Intel 专用构建（修复 exit code 9 问题）
+  ##############################################################################
+  build-macos-intel:
+    runs-on: macos-15-intel # 直接用 Intel runner，不再构建 arm64
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup JDK ${{ env.JAVA_VERSION }}
+      - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '17'
           distribution: 'temurin'
 
-      - name: Download JavaFX ${{ env.JAVAFX_VERSION }} (macOS ${{ matrix.arch }})
+      - name: Download Intel JavaFX SDK
         run: |
-          ARCH=${{ matrix.arch }}
-          URL="https://download2.gluonhq.com/openjfx/${{ env.JAVAFX_VERSION }}/openjfx-${{ env.JAVAFX_VERSION }}_osx-${ARCH}_bin-sdk.zip"
-          curl -L "$URL" -o javafx.zip
+          curl -L "https://download2.gluonhq.com/openjfx/${{ env.JAVAFX_VERSION }}/openjfx-${{ env.JAVAFX_VERSION }}_osx-x64_bin-sdk.zip" -o javafx.zip
           unzip -q javafx.zip -d /tmp
           mv /tmp/javafx-sdk-${{ env.JAVAFX_VERSION }} /tmp/javafx-sdk
           echo "JAVAFX_PATH=/tmp/javafx-sdk/lib" >> $GITHUB_ENV
@@ -42,59 +40,56 @@ jobs:
           chmod +x mvnw
           ./mvnw clean package -DskipTests
 
-      - name: Jlink Runtime (macOS ${{ matrix.arch }})
+      - name: Jlink Runtime (Intel)
         run: |
           jlink \
             --module-path "$JAVAFX_PATH" \
-            --add-modules \
-              java.base,java.desktop,java.xml,java.logging,java.naming, \
-              javafx.controls,javafx.fxml,javafx.graphics,javafx.base, \
-              javafx.swing,javafx.media,javafx.web \
-            --output target/runtime-macos-${{ matrix.arch }} \
-            --strip-debug \
-            --no-man-pages \
-            --no-header-files \
-            --compress=2
+            --add-modules java.base,java.desktop,javafx.controls,javafx.fxml,javafx.graphics,javafx.base,javafx.swing \
+            --output target/runtime \
+            --strip-debug --no-man-pages --no-header-files --compress=2
 
-      - name: Package DMG (macOS ${{ matrix.arch }})
+      - name: Package DMG (Intel)
         run: |
           mkdir -p target/dist
           jpackage \
             --input target \
-            --name "${{ env.APP_NAME }}" \
-            --main-jar "${{ env.MAIN_JAR }}" \
-            --main-class "${{ env.MAIN_CLASS }}" \
+            --name "$APP_NAME" \
+            --main-jar "$MAIN_JAR" \
+            --main-class "$MAIN_CLASS" \
             --dest target/dist \
             --type dmg \
             --app-version 1.0.0 \
             --vendor "RT" \
             --mac-package-identifier "com.rt.batchtool" \
-            --runtime-image target/runtime-macos-${{ matrix.arch }} \
+            --runtime-image target/runtime \
             --java-options "-Xmx2G -Dfile.encoding=UTF-8 -Dprism.forceGPU=true"
 
-      - name: Fix permissions & codesign (adhoc)
+      - name: Adhoc Sign
         run: |
-          sudo chmod -R 755 target/dist
+          sudo codesign --force --deep --sign - target/dist/*.app
           sudo codesign --force --deep --sign - target/dist/*.dmg
 
-      - name: Upload macOS ${{ matrix.arch }} Artifact
+      - name: Upload macOS Intel Artifact
         uses: actions/upload-artifact@v4.4.3
         with:
-          name: ${{ env.APP_NAME }}-macOS-${{ matrix.arch }}
+          name: BatchRenameTool-macOS-Intel
           path: target/dist/*.dmg
 
+  ##############################################################################
+  # Windows EXE 构建（修复 exit code 1 问题）
+  ##############################################################################
   build-windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Setup JDK ${{ env.JAVA_VERSION }}
+      - name: Setup JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: '17'
           distribution: 'temurin'
 
-      - name: Download JavaFX ${{ env.JAVAFX_VERSION }} (Windows x64)
+      - name: Download Windows JavaFX SDK
         run: |
           curl -L "https://download2.gluonhq.com/openjfx/${{ env.JAVAFX_VERSION }}/openjfx-${{ env.JAVAFX_VERSION }}_windows-x64_bin-sdk.zip" -o javafx.zip
           unzip -q javafx.zip -d C:\tmp
@@ -104,40 +99,32 @@ jobs:
       - name: Build with Maven
         run: ./mvnw clean package -DskipTests
 
-      - name: Jlink Runtime (Windows x64)
+      - name: Jlink Runtime (Windows)
         run: |
           jlink `
             --module-path "$env:JAVAFX_PATH" `
-            --add-modules `
-              java.base,java.desktop,java.xml,java.logging,java.naming, `
-              javafx.controls,javafx.fxml,javafx.graphics,javafx.base, `
-              javafx.swing,javafx.media,javafx.web `
-            --output target\runtime-windows `
-            --strip-debug `
-            --no-man-pages `
-            --no-header-files `
-            --compress=2
+            --add-modules java.base,java.desktop,javafx.controls,javafx.fxml,javafx.graphics,javafx.base,javafx.swing `
+            --output target\runtime `
+            --strip-debug --no-man-pages --no-header-files --compress=2
 
-      - name: Package EXE (Windows x64)
+      - name: Package EXE
         run: |
           jpackage `
             --input target `
-            --name "${{ env.APP_NAME }}" `
-            --main-jar "${{ env.MAIN_JAR }}" `
-            --main-class "${{ env.MAIN_CLASS }}" `
+            --name "$env:APP_NAME" `
+            --main-jar "$env:MAIN_JAR" `
+            --main-class "$env:MAIN_CLASS" `
             --dest target\dist `
             --type exe `
             --app-version 1.0.0 `
             --vendor "RT" `
-            --runtime-image target\runtime-windows `
+            --runtime-image target\runtime `
             --java-options "-Xmx2G -Dfile.encoding=UTF-8" `
-            --win-shortcut `
-            --win-menu `
-            --win-console
+            --win-shortcut --win-menu --win-console
         shell: pwsh
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4.4.3
         with:
-          name: ${{ env.APP_NAME }}-Windows
+          name: BatchRenameTool-Windows
           path: target\dist\*.exe
