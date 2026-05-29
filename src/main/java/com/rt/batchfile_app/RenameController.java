@@ -33,6 +33,7 @@ public class RenameController {
 
     private List<String> excelNames = new ArrayList<>();
     private List<File> selectedFolderFiles = new ArrayList<>();
+    private List<File> selectedFiles = new ArrayList<>(); // 选中的文件列表
     private File parentDirectory = null;
 
     @FXML
@@ -107,11 +108,12 @@ public class RenameController {
     }
 
     /**
-     * 从剪贴板获取选中的文件夹
+     * 从剪贴板获取选中的文件夹和文件
      */
     @FXML
     private void getFoldersFromClipboard() {
         selectedFolderFiles.clear();
+        selectedFiles.clear();
         
         try {
             // 获取系统剪贴板
@@ -120,7 +122,7 @@ public class RenameController {
             java.awt.datatransfer.Transferable content = clipboard.getContents(null);
             
             if (content == null) {
-                showWarning("剪贴板为空，请先在资源管理器中选中文件夹并按 Ctrl+C 复制");
+                showWarning("剪贴板为空，请先在资源管理器中选中文件夹或文件并按 Ctrl+C 复制");
                 return;
             }
             
@@ -132,35 +134,50 @@ public class RenameController {
                 for (File file : files) {
                     if (file.isDirectory()) {
                         selectedFolderFiles.add(file);
+                    } else if (file.isFile()) {
+                        selectedFiles.add(file);
                     }
                 }
                 
-                if (selectedFolderFiles.isEmpty()) {
-                    showWarning("剪贴板中没有找到文件夹，请先选中文件夹再复制");
+                if (selectedFolderFiles.isEmpty() && selectedFiles.isEmpty()) {
+                    showWarning("剪贴板中没有找到文件或文件夹，请先选中后再复制");
                     return;
                 }
                 
-                // 显示选中的文件夹路径
+                // 显示选中的文件夹和文件路径
                 StringBuilder sb = new StringBuilder();
-                for (File folder : selectedFolderFiles) {
-                    sb.append(folder.getAbsolutePath()).append("\n");
+                if (!selectedFolderFiles.isEmpty()) {
+                    sb.append("文件夹:\n");
+                    for (File folder : selectedFolderFiles) {
+                        sb.append("  ").append(folder.getAbsolutePath()).append("\n");
+                    }
+                }
+                if (!selectedFiles.isEmpty()) {
+                    sb.append("\n文件:\n");
+                    for (File file : selectedFiles) {
+                        sb.append("  ").append(file.getAbsolutePath()).append("\n");
+                    }
                 }
                 selectedFoldersArea.setText(sb.toString());
                 
-                // 获取父目录（所有选中文件夹的共同父目录）
+                // 获取父目录（所有选中项目的共同父目录）
                 if (!selectedFolderFiles.isEmpty()) {
                     parentDirectory = selectedFolderFiles.get(0).getParentFile();
+                } else if (!selectedFiles.isEmpty()) {
+                    parentDirectory = selectedFiles.get(0).getParentFile();
+                }
+                if (parentDirectory != null) {
                     folderPathField.setText(parentDirectory.getAbsolutePath());
                 }
                 
-                appendLog("从剪贴板获取了 " + selectedFolderFiles.size() + " 个文件夹");
+                appendLog("从剪贴板获取了 " + selectedFolderFiles.size() + " 个文件夹和 " + selectedFiles.size() + " 个文件");
             } else if (content.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)) {
                 // 如果是文本格式（可能是文件路径）
                 String text = (String) content.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor);
-                appendLog("检测到文本内容，请先在资源管理器中选中文件夹后按Ctrl+C复制");
-                showWarning("检测到文本内容，请在资源管理器中选中文件夹后按Ctrl+C复制");
+                appendLog("检测到文本内容，请先在资源管理器中选中文件夹或文件后按Ctrl+C复制");
+                showWarning("检测到文本内容，请在资源管理器中选中文件夹或文件后按Ctrl+C复制");
             } else {
-                showWarning("剪贴板内容格式不支持，请在资源管理器中选中文件夹后按Ctrl+C复制");
+                showWarning("剪贴板内容格式不支持，请在资源管理器中选中文件夹或文件后按Ctrl+C复制");
             }
         } catch (Exception e) {
             showError("读取剪贴板失败: " + e.getMessage());
@@ -522,5 +539,95 @@ public class RenameController {
             // 没有-，返回整个名称
             return folderName;
         }
+    }
+
+    /**
+     * 执行文件分类移动到对应文件夹操作
+     */
+    @FXML
+    private void executeSortFilesIntoFolders() {
+        if (selectedFolderFiles.isEmpty()) {
+            showWarning("请先从剪贴板获取文件夹\n\n操作步骤：\n1. 在资源管理器中选中文件夹和文件\n2. 按 Ctrl+C 复制\n3. 点击'从剪贴板获取文件夹'按钮");
+            return;
+        }
+
+        if (selectedFiles.isEmpty()) {
+            showWarning("请先从剪贴板获取要移动的文件\n\n操作步骤：\n1. 在资源管理器中选中文件夹和文件\n2. 按 Ctrl+C 复制\n3. 点击'从剪贴板获取文件夹'按钮");
+            return;
+        }
+
+        appendLog("开始将文件分类移动到对应文件夹...");
+        appendLog("选中了 " + selectedFolderFiles.size() + " 个文件夹和 " + selectedFiles.size() + " 个文件");
+
+        int successCount = 0;
+        int failCount = 0;
+        int notMatchedCount = 0;
+
+        // 遍历每个文件，查找匹配的文件夹
+        for (File file : selectedFiles) {
+            String fileName = file.getName();
+            // 获取不带扩展名的文件名
+            String fileNameWithoutExt = fileName;
+            int dotIndex = fileName.lastIndexOf('.');
+            if (dotIndex > 0) {
+                fileNameWithoutExt = fileName.substring(0, dotIndex);
+            }
+            
+            boolean matched = false;
+            
+            // 遍历所有文件夹，查找匹配的文件夹
+            for (File folder : selectedFolderFiles) {
+                String folderName = folder.getName();
+                
+                // 检查文件名是否包含文件夹名
+                if (fileNameWithoutExt.contains(folderName)) {
+                    try {
+                        // 构建目标路径
+                        File destFile = new File(folder, fileName);
+                        
+                        // 如果目标文件已存在，添加序号避免冲突
+                        if (destFile.exists()) {
+                            String baseName = fileNameWithoutExt;
+                            String extension = dotIndex > 0 ? fileName.substring(dotIndex) : "";
+                            int counter = 1;
+                            while (destFile.exists()) {
+                                String newName = baseName + "_" + counter + extension;
+                                destFile = new File(folder, newName);
+                                counter++;
+                            }
+                            appendLog("检测到文件冲突，使用新名称: " + destFile.getName());
+                        }
+                        
+                        // 移动文件
+                        if (file.renameTo(destFile)) {
+                            successCount++;
+                            appendLog("成功移动文件: " + fileName + " -> " + folder.getName() + "/" + destFile.getName());
+                            matched = true;
+                            break; // 找到匹配的文件夹后跳出循环
+                        } else {
+                            failCount++;
+                            appendLog("移动文件失败: " + fileName + " -> " + folder.getName());
+                        }
+                    } catch (Exception e) {
+                        failCount++;
+                        appendLog("移动文件异常: " + fileName + ", 错误: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+            }
+            
+            if (!matched && failCount == 0) {
+                notMatchedCount++;
+                appendLog("未找到匹配的文件夹: " + fileName);
+            }
+        }
+
+        appendLog("文件分类移动完成! 成功: " + successCount + ", 失败: " + failCount + ", 未匹配: " + notMatchedCount);
+        showAlert("分类移动完成", "成功: " + successCount + "\n失败: " + failCount + "\n未匹配: " + notMatchedCount);
+        
+        // 清空选择
+        selectedFolderFiles.clear();
+        selectedFiles.clear();
+        selectedFoldersArea.clear();
     }
 }

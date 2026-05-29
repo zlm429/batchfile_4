@@ -1,0 +1,77 @@
+name: macOS Build and Package
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Cache Maven packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+    
+    - name: Build with Maven
+      run: |
+        chmod +x mvnw
+        ./mvnw clean package -DskipTests
+    
+    - name: Package as DMG
+      run: |
+        jpackage --input target \
+                 --name "BatchRenameTool" \
+                 --main-jar batchfile_app-0.0.1-SNAPSHOT.jar \
+                 --main-class com.rt.batchfile_app.BatchfileAppApplication \
+                 --dest target/dist \
+                 --type dmg \
+                 --app-version 1.0.0 \
+                 --vendor RT \
+                 --java-options "--add-modules" \
+                 --java-options "javafx.controls,javafx.fxml"
+    
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: BatchRenameTool-macOS
+        path: target/dist/*.dmg
+    
+    - name: Create Release
+      if: github.event_name == 'push'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: target/dist/*.dmg
+        tag_name: v${{ github.run_number }}
+        name: Release ${{ github.run_number }}
+        body: |
+          ## 批量文件夹重命名工具 - macOS 版本
+          
+          ### 新增功能
+          - 文件自动分类到对应文件夹
+          - 支持同时选中文件夹和文件，按名称匹配移动
+          
+          ### 安装说明
+          1. 下载 DMG 文件
+          2. 双击打开
+          3. 将应用拖拽到 Applications 文件夹
+          4. 首次运行可能需要右键点击"打开"以允许运行
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
