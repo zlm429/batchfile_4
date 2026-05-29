@@ -12,10 +12,7 @@ env:
 
 jobs:
   build-macos:
-    strategy:
-      matrix:
-        os: [macos-latest, macos-13] # macos-latest = ARM64, macos-13 = Intel
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     
     steps:
     - name: Checkout code
@@ -29,22 +26,16 @@ jobs:
     
     - name: Detect macOS Architecture
       run: |
-        ARCH=$(uname -m)
-        if [ "$ARCH" = "arm64" ]; then
-          echo "JAVAFX_URL=https://download2.gluonhq.com/openjfx/17.0.2/openjfx-17.0.2_osx-aarch64_bin-sdk.zip" >> $GITHUB_ENV
-          echo "PLATFORM_NAME=Apple-Silicon" >> $GITHUB_ENV
-        else
-          echo "JAVAFX_URL=https://download2.gluonhq.com/openjfx/17.0.2/openjfx-17.0.2_osx-x64_bin-sdk.zip" >> $GITHUB_ENV
-          echo "PLATFORM_NAME=Intel" >> $GITHUB_ENV
-        fi
+        echo "JAVAFX_URL=https://download2.gluonhq.com/openjfx/17.0.2/openjfx-17.0.2_osx-aarch64_bin-sdk.zip" >> $GITHUB_ENV
+        echo "PLATFORM_NAME=macOS" >> $GITHUB_ENV
     
     - name: Cache Maven packages
       uses: actions/cache@v4
       with:
         path: ~/.m2
-        key: ${{ runner.os }}-${{ matrix.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
         restore-keys: |
-          ${{ runner.os }}-${{ matrix.os }}-maven-
+          ${{ runner.os }}-maven-
     
     - name: Build with Maven
       run: |
@@ -60,7 +51,7 @@ jobs:
     
     - name: Package as DMG
       run: |
-        # 使用 JavaFX module-path 打包
+        # 使用 Rosetta 2 兼容模式打包，支持 Intel 和 Apple Silicon
         jpackage --input target \
                  --name "BatchRenameTool" \
                  --main-jar batchfile_app-0.0.1-SNAPSHOT.jar \
@@ -71,7 +62,9 @@ jobs:
                  --vendor RT \
                  --module-path ${{ env.JAVAFX_PATH }} \
                  --add-modules javafx.controls,javafx.fxml \
-                 --java-options "-Dfile.encoding=UTF-8"
+                 --java-options "-Dfile.encoding=UTF-8" \
+                 --mac-package-identifier com.rt.batchrename \
+                 --temp target/temp-build
     
     - name: Upload DMG artifact
       if: always()
@@ -96,24 +89,10 @@ jobs:
           - ✅ 批量重命名文件夹内的文件
           - ✅ 自动分类文件到对应文件夹（新功能）
           
-          ### 选择正确的版本
-          - **Apple Silicon (M1/M2/M3)**: 适用于 2020 年后的新款 Mac
-          - **Intel**: 适用于 2020 年前的老款 Mac
-          
-          ### 如何查看您的 Mac 架构？
-          点击左上角 苹果菜单 → 关于本机 → 查看"芯片"或"处理器"
-          - 显示"Apple M1/M2/M3" → 下载 Apple-Silicon 版本
-          - 显示"Intel" → 下载 Intel 版本
-          
-          ### 安装说明
-          1. 下载对应的 DMG 文件
-          2. 双击打开
-          3. 将应用拖拽到 Applications 文件夹
-          4. 首次运行：右键点击 → 选择"打开" → 再次点击"打开"
-          
           ### 系统要求
           - macOS 10.14 或更高版本
           - 无需安装 Java 环境（已内置 JRE）
+          - 支持 Intel 和 Apple Silicon (M1/M2/M3)
         draft: false
         prerelease: false
       env:
