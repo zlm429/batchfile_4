@@ -1,10 +1,7 @@
-name: Build Windows EXE (Fixed Graphics)
+name: Build Windows EXE (Pom-First)
 
 on:
   workflow_dispatch:
-
-env:
-  JAVA_VERSION: '17'
 
 jobs:
   build-windows:
@@ -18,11 +15,13 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Build with Maven (with jpackage)
-        run: ./mvnw clean package jpackage:jpackage -DskipTests
+      # 关键：直接调用 Maven 命令，和你本地一样
+      - name: Build & Package
+        run: |
+          ./mvnw clean package jpackage:jpackage -DskipTests
 
       - name: Upload EXE
-        uses: actions/upload-artifact@v4.4.3
+        uses: actions/upload-artifact@v4
         with:
           name: BatchRenameTool-Windows
           path: target/dist/*.exe
