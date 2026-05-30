@@ -1,14 +1,10 @@
-name: Build Windows EXE (Fixed)
+name: Build Windows EXE (Fixed Graphics)
 
 on:
   workflow_dispatch:
 
 env:
   JAVA_VERSION: '17'
-  JAVAFX_VERSION: '17.0.2'
-  APP_NAME: "BatchRenameTool"
-  MAIN_CLASS: "com.rt.batchfile_app.BatchfileAppApplication"
-  MAIN_JAR: "batchfile_app-0.0.1-SNAPSHOT.jar"
 
 jobs:
   build-windows:
@@ -22,46 +18,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Download JavaFX SDK
-        run: |
-          curl -L "https://download2.gluonhq.com/openjfx/${{ env.JAVAFX_VERSION }}/openjfx-${{ env.JAVAFX_VERSION }}_windows-x64_bin-sdk.zip" -o javafx.zip
-          unzip -q javafx.zip -d C:\tmp
-          mv C:\tmp\javafx-sdk-${{ env.JAVAFX_VERSION }} C:\tmp\javafx-sdk
-          echo "JAVAFX_PATH=C:\tmp\javafx-sdk\lib" >> $env:GITHUB_ENV
-
-      - name: Build with Maven
-        run: ./mvnw clean package -DskipTests
-
-      # 关键步骤1：用 jlink 生成带 JavaFX 的自定义 JRE
-      - name: Create custom runtime with jlink
-        run: |
-          jlink `
-            --no-header-files `
-            --no-man-pages `
-            --compress=2 `
-            --strip-debug `
-            --add-modules java.base,java.desktop,java.xml,javafx.controls,javafx.fxml,javafx.graphics,javafx.base,javafx.swing `
-            --module-path $env:JAVAFX_PATH `
-            --output target\runtime
-
-      # 关键步骤2：用 jpackage 打包，使用上面生成的 runtime
-      - name: Package EXE
-        run: |
-          jpackage `
-            --input target `
-            --name "BatchRenameTool" `
-            --main-jar "batchfile_app-0.0.1-SNAPSHOT.jar" `
-            --main-class "com.rt.batchfile_app.BatchfileAppApplication" `
-            --dest target\dist `
-            --type exe `
-            --app-version 1.0.0 `
-            --vendor "RT" `
-            --runtime-image target\runtime `
-            --java-options "-Xmx2G -Dfile.encoding=UTF-8" `
-            --win-shortcut `
-            --win-menu `
-            --win-console
-        shell: pwsh
+      - name: Build with Maven (with jpackage)
+        run: ./mvnw clean package jpackage:jpackage -DskipTests
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4.4.3
